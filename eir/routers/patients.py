@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from src.eir.schemas.patients import addPatient
+from eir.schemas.patients import addPatient
 router = APIRouter(prefix="/patients", tags=["patients"])
 
 @router.post("/patients/")
