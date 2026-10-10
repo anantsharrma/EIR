@@ -1,7 +1,6 @@
 from fastapi import FastAPI
-import uvicorn
-from src.eir.routers.session import router as sessions_router
-from src.eir.routers.patients import router as patients_router
+from eir.routers.session import router as sessions_router
+from eir.routers.patients import router as patients_router
 app = FastAPI(
     title="EIR API",
     version="0.1.0",
