@@ -1,72 +1,36 @@
-from uuid import uuid4
-from eir.services.session_store import sessions
-from eir.services.questions import QUESTIONS
+
 from fastapi import APIRouter, HTTPException
-from eir.schemas.session import SessionCreate, SessionResponse, SessionState
-from eir.schemas.answers import AnswerResponse, RecordedAnswer, GiveAnswer
+from eir.schemas.session import SessionCreate, SessionResponse
+from eir.schemas.answers import AnswerResponse,  GiveAnswer
+from eir.services.session_service import (
+    NoQuestionsConfiguredError,
+    SessionAlreadyCompletedError,
+    SessionNotFoundError,
+    create_session as create_session_service,
+    submit_answer as submit_answer_service,
+)
 router = APIRouter(
     prefix="/sessions",
     tags=["Sessions"],
 )
 
 
-@router.post("", response_model=SessionResponse)
+@router.post("", response_model=SessionResponse, status_code=201)
 async def create_session(data: SessionCreate) -> SessionResponse:
-    session_id = str(uuid4())
+        try:
+            return create_session_service(data)
+        except NoQuestionsConfiguredError as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
 
-    sessions[session_id] = SessionState(session_id=session_id,
-                                        patient_id=data.patient_id,)
-    session = sessions[session_id]
-    return SessionResponse(
-        session_id= session.session_id,
-        patient_id=session.patient_id,
-        current_question=QUESTIONS[session.question_index],
-        completed= session.completed,
-    )
 
 @router.post("/{session_id}/answers", response_model=AnswerResponse)
 async def submit_answer(
     session_id: str,
     data: GiveAnswer
 ) -> AnswerResponse:
-    session = sessions.get(session_id)
-    if session is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Session not found"
-        )
-    if session.completed:
-        raise HTTPException(
-            status_code=409,
-            detail="Session already completed"
-        )
-
-    current_question = QUESTIONS[session.question_index]
-
-    recorded_answer = RecordedAnswer(
-        question_id=current_question.question_id,
-        question_text=current_question.prompt,
-        answer=data.answer,
-    )
-    session.answers.append(recorded_answer)
-    next_index = session.question_index + 1
-
-    if next_index >= len(QUESTIONS):
-        session.completed=True
-        session.question_index = next_index
-        return AnswerResponse(
-            session_id=session.session_id,
-            answer=recorded_answer.answer,
-            next_question=None,
-            recorded=True,
-            completed=True,
-        )
-    session.question_index = next_index
-    next_question = QUESTIONS[session.question_index]
-    return AnswerResponse(
-        session_id=session.session_id,
-        answer=recorded_answer.answer,
-        recorded=True,
-        next_question=next_question,
-        completed=False,
-    )
+    try:
+        return submit_answer_service(session_id, data)
+    except SessionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except SessionAlreadyCompletedError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
