@@ -40,8 +40,8 @@ async def submit_answer(
             status_code=409,
             detail="Session already completed"
         )
-    index = session.question_index
-    current_question = QUESTIONS[index]
+
+    current_question = QUESTIONS[session.question_index]
 
     recorded_answer = RecordedAnswer(
         question_id=current_question.question_id,
@@ -49,20 +49,23 @@ async def submit_answer(
         answer=data.answer,
     )
     session.answers.append(recorded_answer)
-    index += 1
-    next_question= QUESTIONS[index]
-    if index >= len(QUESTIONS):
+    next_index = session.question_index + 1
+
+    if next_index >= len(QUESTIONS):
         session.completed=True
+        session.question_index = next_index
         return AnswerResponse(
             session_id=session.session_id,
-            answer=session.answers[0].answer,
+            answer=recorded_answer.answer,
             next_question=None,
             recorded=True,
             completed=True,
         )
+    session.question_index = next_index
+    next_question = QUESTIONS[session.question_index]
     return AnswerResponse(
         session_id=session.session_id,
-        answer=session.answers[0].answer,
+        answer=recorded_answer.answer,
         recorded=True,
         next_question=next_question,
         completed=False,
