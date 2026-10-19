@@ -17,10 +17,6 @@ def test_create_session():
     assert session.completed is False
     assert session.current_question is not None
 
-
-
-
-
 def test_submit_answers_until_completion():
 
     question_bank = [

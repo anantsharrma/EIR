@@ -1,6 +1,11 @@
 
 from uuid import uuid4
-
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+from sqlalchemy.ext.asyncio import AsyncSession
+from eir.models.sessions import Session as SessionModel
+from eir.models.patients import Patient as PatientModel
+from eir.models.answers import Answer as AnswerModel
 from eir.schemas.answers import (
     GiveAnswer,
     AnswerResponse,
@@ -9,7 +14,7 @@ from eir.schemas.answers import (
 from eir.schemas.session import SessionCreate, SessionResponse, SessionState
 from eir.services.questions import QUESTIONS
 from eir.services.session_store import sessions
-
+from eir.models.enum import SessionStatus
 
 class SessionNotFoundError(Exception):
     pass
@@ -17,72 +22,95 @@ class SessionAlreadyCompletedError(Exception):
     pass
 class NoQuestionsConfiguredError(Exception):
     pass
+class PatientNotFoundError(Exception):
+    pass
 
-
-def create_session(data: SessionCreate) -> SessionResponse:
-
+async def create_session(
+        data: SessionCreate,
+        db: AsyncSession) -> SessionResponse:
+    patient_result = await db.execute(select(PatientModel).where(PatientModel.patient_id == data.patient_id))
+    patient = patient_result.scalar_one_or_none()
+    if not patient:
+        raise PatientNotFoundError("Patient not found.")
     if not QUESTIONS:
         raise NoQuestionsConfiguredError("No questions are configured.")
 
-    session_id = str(uuid4())
-    session = SessionState(
-        session_id=session_id,
+    session = SessionModel(
+        session_id=str(uuid4()),
         patient_id=data.patient_id,
+        current_question_id=QUESTIONS[0].question_id,
     )
-    sessions[session_id] = session
+
+    db.add(session)
+    await db.commit()
+    await db.refresh(session)
 
     return SessionResponse(
         session_id=session.session_id,
         patient_id=session.patient_id,
-        current_question=QUESTIONS[session.question_index],
+        current_question=QUESTIONS[0],
         completed=session.completed,
     )
 
-
-def submit_answer(
+async def submit_answer(
     session_id: str,
     data: GiveAnswer,
+    db: AsyncSession
 ) -> AnswerResponse:
 
 
-    session = sessions.get(session_id)
-
+    session_result = await db.execute(select(SessionModel).options(selectinload(SessionModel.answers)).where(SessionModel.session_id == session_id))
+    session = session_result.scalar_one_or_none()
     if session is None:
         raise SessionNotFoundError("Session not found.")
 
-    if session.completed:
+    if session.status != SessionStatus.IN_PROGRESS:
         raise SessionAlreadyCompletedError(
-            "This session is already complete."
+            "This session is not accepting answers."
         )
 
-    current_question = QUESTIONS[session.question_index]
-
-    recorded_answer = RecordedAnswer(
-        question_id=current_question.question_id,
-        question_text=current_question.prompt,
-        answer=data.answer,
+    answer_q_id = {
+        answer.question_id for answer in session.answers
+    }
+    current_question = next(
+    (
+        q for q in QUESTIONS
+        if q.question_id not in answer_q_id
+    ),
+    None,
     )
+    if current_question is None:
+        raise NoQuestionsConfiguredError("No questions are configured.")
+    recorded_answer = AnswerModel(
+    session_id=session.session_id,
+    question_id=current_question.question_id,
+    question_text=current_question.prompt,
+    answer_text=data.answer,
+)
 
-    session.answers.append(recorded_answer)
-    session.question_index += 1
 
-    if session.question_index >= len(QUESTIONS):
+    db.add(recorded_answer)
+
+
+    answer_q_id.add(current_question.question_id)
+    next_question = next(
+        (
+            q for q in QUESTIONS
+            if q.question_id not in answer_q_id
+        ),
+        None,
+    )
+    if next_question is None:
+        session.current_question_id = None
         session.completed = True
-
-        return AnswerResponse(
-            session_id=session.session_id,
-            answer=recorded_answer.answer,
-            recorded=True,
-            next_question=None,
-            completed=True,
-        )
-
-    next_question = QUESTIONS[session.question_index]
-
+        session.status = SessionStatus.COMPLETED
+    else:
+        session.current_question_id = next_question.question_id
+    await db.commit()
     return AnswerResponse(
         session_id=session.session_id,
-        answer=recorded_answer.answer,
+        answer=data.answer,
         recorded=True,
         next_question=next_question,
-        completed=False,
+        completed=session.completed,
     )
