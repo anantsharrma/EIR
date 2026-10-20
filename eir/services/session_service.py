@@ -11,19 +11,16 @@ from eir.schemas.answers import (
     AnswerResponse,
     RecordedAnswer,
 )
-from eir.schemas.session import SessionCreate, SessionResponse, SessionState
+from eir.schemas.session import SessionCreate, SessionResponse
 from eir.services.questions import QUESTIONS
-from eir.services.session_store import sessions
 from eir.models.enum import SessionStatus
-
-class SessionNotFoundError(Exception):
-    pass
-class SessionAlreadyCompletedError(Exception):
-    pass
-class NoQuestionsConfiguredError(Exception):
-    pass
-class PatientNotFoundError(Exception):
-    pass
+from eir.services.error.session import (
+SessionNotFoundError,
+SessionAlreadyCompletedError,
+NoQuestionsConfiguredError,
+PatientHasNoSessionsErorr
+)
+from eir.services.error.patient import PatientNotFoundError
 
 async def create_session(
         data: SessionCreate,
@@ -87,11 +84,7 @@ async def submit_answer(
     question_text=current_question.prompt,
     answer_text=data.answer,
 )
-
-
     db.add(recorded_answer)
-
-
     answer_q_id.add(current_question.question_id)
     next_question = next(
         (
@@ -114,3 +107,47 @@ async def submit_answer(
         next_question=next_question,
         completed=session.completed,
     )
+
+async def get_all_session(
+        patient_id: str,
+        db: AsyncSession,
+):
+    result = await db.execute(
+        select(PatientModel.patient_id, SessionModel.session_id)
+        .outerjoin(
+            SessionModel,
+            PatientModel.patient_id == SessionModel.patient_id,
+        )
+        .where(PatientModel.patient_id == patient_id)
+    )
+
+    rows = result.all()
+
+    if not rows:
+        raise PatientNotFoundError("Patient not found.")
+
+    session_ids = [
+        row.session_id
+        for row in rows
+        if row.session_id is not None
+    ]
+
+    if not session_ids:
+        raise PatientHasNoSessionsErorr("This patient has no sessions.")
+
+
+    return {"session_ids": session_ids}
+
+async def get_session(
+        session_id:str,
+        patient_id:str,
+        db: AsyncSession
+):
+    result = await db.execute(
+        select(SessionModel).options(selectinload(SessionModel.answers), selectinload(SessionModel.patient)).where(
+            SessionModel.patient_id == patient_id, SessionModel.session_id == session_id))
+    session = result.scalar_one_or_none()
+    if session is None:
+        raise SessionNotFoundError("Session not found.")
+    return session
+

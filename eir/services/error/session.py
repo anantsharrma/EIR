@@ -1,4 +1,8 @@
-class SessionNotFound(Exception):
+class SessionNotFoundError(Exception):
     pass
-class PatientNotFound(Exception):
+class SessionAlreadyCompletedError(Exception):
+    pass
+class NoQuestionsConfiguredError(Exception):
+    pass
+class PatientHasNoSessionsErorr(Exception):
     pass
