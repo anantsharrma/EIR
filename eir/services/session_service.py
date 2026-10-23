@@ -1,4 +1,3 @@
-
 from uuid import uuid4
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -139,15 +138,25 @@ async def get_all_session(
     return {"session_ids": session_ids}
 
 async def get_session(
-        session_id:str,
         patient_id:str,
+        session_id:str,
         db: AsyncSession
 ):
     result = await db.execute(
-        select(SessionModel).options(selectinload(SessionModel.answers), selectinload(SessionModel.patient)).where(
-            SessionModel.patient_id == patient_id, SessionModel.session_id == session_id))
+        select(SessionModel)
+        .options(
+            selectinload(SessionModel.answers),
+            selectinload(SessionModel.patient),
+        )
+        .where(
+            SessionModel.patient_id == patient_id,
+            SessionModel.session_id == session_id,
+        )
+    )
+
     session = result.scalar_one_or_none()
+
     if session is None:
         raise SessionNotFoundError("Session not found.")
-    return session
 
+    return session

@@ -4,16 +4,17 @@ from eir.services.session_service import PatientNotFoundError
 from eir.db.sessions import get_db
 from eir.schemas.session import SessionCreate, SessionResponse
 from eir.services.patient_service import create_patient as create_patient_service
-from eir.schemas.patients import AddPatient
+from eir.schemas.patients import PatientCreate, PatientResponse
+
 router = APIRouter(prefix="/patient", tags=["Patients"])
 from sqlalchemy import select
 from eir.models.patients import Patient
 from sqlalchemy.orm import selectinload
-@router.post("/register", response_model=AddPatient, status_code=201)
+@router.post("/register", response_model=PatientResponse, status_code=201)
 async def create_patient(
-    data: AddPatient,
+    data: PatientCreate,
     db: AsyncSession = Depends(get_db),
-) -> AddPatient:
+) -> PatientResponse:
         return await create_patient_service(data, db)
 
 @router.get("/all_patients", status_code=200)
