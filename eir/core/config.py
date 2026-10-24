@@ -26,5 +26,11 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
+    jwt_issuer: str = "eir-api"
+    jwt_audience: str = "eir-web"
+    csrf_cookie_name: str = "eir_csrf"
+    csrf_header_name: str = "X-CSRF-Token"
+    frontend_origins: list[str] = ["http://localhost:5000"]
+
 
 settings = Settings()
